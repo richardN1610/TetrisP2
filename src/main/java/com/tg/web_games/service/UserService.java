@@ -57,7 +57,7 @@ public class UserService implements InputValidator {
 
         userRepository.deleteById(user.get().getUserId());
     }
-    
+
     public Boolean validateSignUpDetails(UserSignupDetails signupDetails) {
         EmailValidator validator = EmailValidator.getInstance();
 
