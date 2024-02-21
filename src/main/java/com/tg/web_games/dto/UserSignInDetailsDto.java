@@ -11,7 +11,6 @@ import org.springframework.validation.annotation.Validated;
 @NoArgsConstructor
 @Builder
 @Validated
-public class UserSignInDetails {
+public class UserSignInDetailsDto {
     private String emailAddress;
-    private String passwordDetails;
 }
