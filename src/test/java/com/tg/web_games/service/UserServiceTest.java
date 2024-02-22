@@ -45,7 +45,7 @@ public class UserServiceTest {
     @Test
     void createUser_if_email_not_taken() {
         //mocking bcrypt
-        when(userRepository.existByEmailAddress(signupDetails.getEmailAddress())).thenReturn(false);
+        when(userRepository.existsByEmailAddress(signupDetails.getEmailAddress())).thenReturn(false);
 
         //mocking user
         UserDetails user = new UserDetails(1L,signupDetails.getFirstName(),signupDetails.getLastName(),signupDetails.getUserName(),signupDetails.getEmailAddress(), signupDetails.getPasswordDetails());
@@ -64,21 +64,21 @@ public class UserServiceTest {
         assertEquals("BobbyBob123@gmail.com",user.getEmailAddress());
 
         verify(passwordEncoder,times(1)).encode("password123");
-        verify(userRepository,times(1)).existByEmailAddress("BobbyBob123@gmail.com");
+        verify(userRepository,times(1)).existsByEmailAddress("BobbyBob123@gmail.com");
         verify(userMapper,times(1)).signupDetails(signupDetails);
         verify(userRepository,times(1)).save(user);
     }
 
     @Test
     void create_user_when_email_is_taken(){
-        when(userRepository.existByEmailAddress(signupDetails.getEmailAddress())).thenReturn(true);
+        when(userRepository.existsByEmailAddress(signupDetails.getEmailAddress())).thenReturn(true);
 
         String expectedMsg = "User already exist.";
         String actualMsg = userService.createUser(signupDetails);
 
         assertEquals(expectedMsg,actualMsg);
 
-        verify(userRepository,times(1)).existByEmailAddress("BobbyBob123@gmail.com");
+        verify(userRepository,times(1)).existsByEmailAddress("BobbyBob123@gmail.com");
         verify(userRepository,never()).save(any(UserDetails.class));
     }
 

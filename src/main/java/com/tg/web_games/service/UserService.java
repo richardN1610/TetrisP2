@@ -11,7 +11,9 @@ import com.tg.web_games.repository.UserRepository;
 import com.tg.web_games.utils.InputValidator;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.validator.EmailValidator;
+import org.springframework.context.annotation.Bean;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
@@ -28,7 +30,7 @@ public class UserService implements InputValidator {
         if (!isValidInput(signupDetails)) {
             return "Bad request";
         }
-        boolean isUserExist = userRepository.existByEmailAddress(signupDetails.getEmailAddress());
+        boolean isUserExist = userRepository.existsByEmailAddress(signupDetails.getEmailAddress());
 
         try{
             if(!isUserExist){

@@ -22,5 +22,4 @@ public class UserDetails {
     private String userName;
     private String emailAddress;
     private String passwordDetails;
-
 }
