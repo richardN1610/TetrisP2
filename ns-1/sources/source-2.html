@@ -1,0 +1,293 @@
+
+
+
+<!DOCTYPE html>
+<html id="htmlId">
+<head>
+  <title>Coverage Report > UserService</title>
+  <style type="text/css">
+    @import "../../css/coverage.css";
+    @import "../../css/idea.min.css";
+  </style>
+  <script type="text/javascript" src="../../js/highlight.min.js"></script>
+  <script type="text/javascript" src="../../js/highlightjs-line-numbers.min.js"></script>
+</head>
+
+<body>
+<div class="content">
+<div class="breadCrumbs">
+Current scope:     <a href="../../index.html">all classes</a>
+    <span class="separator">|</span>
+    <a href="../index.html">com.tg.web_games.service</a>
+</div>
+
+<h1>Coverage Summary for Class: UserService (com.tg.web_games.service)</h1>
+
+<table class="coverageStats">
+
+<tr>
+  <th class="name">Class</th>
+<th class="coverageStat 
+">
+  Method, %
+</th>
+<th class="coverageStat 
+">
+  Line, %
+</th>
+</tr>
+<tr>
+  <td class="name">UserService</td>
+<td class="coverageStat">
+  <span class="percent">
+    81.8%
+  </span>
+  <span class="absValue">
+    (9/11)
+  </span>
+</td>
+<td class="coverageStat">
+  <span class="percent">
+    79.7%
+  </span>
+  <span class="absValue">
+    (47/59)
+  </span>
+</td>
+</tr>
+  <tr>
+    <td class="name">UserService$1</td>
+<td class="coverageStat">
+  <span class="percent">
+    0%
+  </span>
+  <span class="absValue">
+    (0/2)
+  </span>
+</td>
+<td class="coverageStat">
+  <span class="percent">
+    0%
+  </span>
+  <span class="absValue">
+    (0/2)
+  </span>
+</td>
+  </tr>
+<tr>
+  <td class="name"><strong>Total</strong></td>
+<td class="coverageStat">
+  <span class="percent">
+    69.2%
+  </span>
+  <span class="absValue">
+    (9/13)
+  </span>
+</td>
+<td class="coverageStat">
+  <span class="percent">
+    77%
+  </span>
+  <span class="absValue">
+    (47/61)
+  </span>
+</td>
+</tr>
+</table>
+
+<br/>
+<br/>
+
+
+<pre>
+<code class="sourceCode" id="sourceCode">&nbsp;package com.tg.web_games.service;
+&nbsp;
+&nbsp;import com.tg.web_games.config.JwtService;
+&nbsp;import com.tg.web_games.dto.UserProfileDto;
+&nbsp;import com.tg.web_games.dto.UserSignInDetailsDto;
+&nbsp;import com.tg.web_games.dto.UserSignupDetails;
+&nbsp;import com.tg.web_games.entity.UserInfo;
+&nbsp;import com.tg.web_games.exceptions.DuplicateUserException;
+&nbsp;import com.tg.web_games.exceptions.InvalidCredentialsException;
+&nbsp;import com.tg.web_games.exceptions.UnauthorizedOperationException;
+&nbsp;import com.tg.web_games.exceptions.UserNotFoundException;
+&nbsp;import com.tg.web_games.mapper.SignUpMapper;
+&nbsp;import com.tg.web_games.repository.UserRepository;
+&nbsp;import com.tg.web_games.utils.InputValidator;
+&nbsp;import com.tg.web_games.utils.Roles;
+&nbsp;import jakarta.persistence.EntityNotFoundException;
+&nbsp;import lombok.RequiredArgsConstructor;
+&nbsp;import org.apache.commons.validator.EmailValidator;
+&nbsp;import org.jetbrains.annotations.NotNull;
+&nbsp;import org.springframework.security.authentication.AuthenticationManager;
+&nbsp;import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+&nbsp;import org.springframework.security.core.context.SecurityContextHolder;
+&nbsp;import org.springframework.security.core.userdetails.UserDetails;
+&nbsp;import org.springframework.security.core.userdetails.UserDetailsService;
+&nbsp;import org.springframework.security.core.userdetails.UsernameNotFoundException;
+&nbsp;import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+&nbsp;import org.springframework.stereotype.Service;
+&nbsp;
+&nbsp;import java.util.Optional;
+&nbsp;
+&nbsp;
+&nbsp;@Service
+<b class="fc">&nbsp;@RequiredArgsConstructor</b>
+&nbsp;public class UserService implements InputValidator {
+&nbsp;    private final UserRepository userRepository;
+&nbsp;    private final BCryptPasswordEncoder bCryptPasswordEncoder;
+&nbsp;    private final SignUpMapper userMapper;
+&nbsp;    private final JwtService jwtService;
+&nbsp;    private final AuthenticationManager authManager;
+&nbsp;    public UserDetailsService userDetailsService() {
+<b class="nc">&nbsp;        return new UserDetailsService() {</b>
+&nbsp;            @Override
+&nbsp;            public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
+<b class="nc">&nbsp;                return userRepository.findByEmailAddress(email).orElseThrow(() -&gt; new EntityNotFoundException(&quot;Entity not found&quot;));</b>
+&nbsp;            }
+&nbsp;        };
+&nbsp;    }
+&nbsp;
+&nbsp;    public AuthenticationResponse createUser(UserSignupDetails signupDetails) throws DuplicateUserException, InvalidCredentialsException {
+<b class="fc">&nbsp;        if (!isValidInput(signupDetails)) {</b>
+<b class="nc">&nbsp;            throw new InvalidCredentialsException(&quot;Invalid request&quot;);</b>
+&nbsp;        }
+<b class="fc">&nbsp;        boolean isEmailTaken = userRepository.existsByEmailAddress(signupDetails.getEmailAddress());</b>
+&nbsp;
+<b class="fc">&nbsp;        if(isEmailTaken){</b>
+<b class="fc">&nbsp;            throw new DuplicateUserException(&quot;Email address is already taken&quot;);</b>
+&nbsp;        }
+&nbsp;
+<b class="fc">&nbsp;        UserInfo newUser = userMapper.signupDetails(signupDetails);</b>
+<b class="fc">&nbsp;        newUser.setPasswordDetails(bCryptPasswordEncoder.encode(newUser.getPasswordDetails()));</b>
+<b class="fc">&nbsp;        newUser.setUserRole(Roles.USER_PLAYER);</b>
+<b class="fc">&nbsp;        userRepository.save(newUser);</b>
+<b class="fc">&nbsp;        var jwtToken = jwtService.generateToken(newUser);</b>
+<b class="fc">&nbsp;        return AuthenticationResponse.builder().token(jwtToken).build();</b>
+&nbsp;    }
+&nbsp;    public AuthenticationResponse signIn(UserSignInDetailsDto signInDetails, String password) throws InvalidCredentialsException, UserNotFoundException {
+<b class="fc">&nbsp;        authManager.authenticate(</b>
+&nbsp;                new UsernamePasswordAuthenticationToken(
+<b class="fc">&nbsp;                        signInDetails.getEmailAddress(),password</b>
+&nbsp;                )
+&nbsp;        );
+&nbsp;
+<b class="fc">&nbsp;        var user = userRepository.findByEmailAddress(signInDetails.getEmailAddress())</b>
+<b class="fc">&nbsp;                .orElseThrow(() -&gt; new UserNotFoundException(&quot;Invalid user&quot;));</b>
+<b class="fc">&nbsp;        var jwtToken =jwtService.generateToken(user);</b>
+&nbsp;
+<b class="fc">&nbsp;        if(!bCryptPasswordEncoder.matches(password,user.getPasswordDetails())){</b>
+<b class="fc">&nbsp;            throw new InvalidCredentialsException(&quot;Invalid Credentials.&quot;);</b>
+&nbsp;        }
+&nbsp;
+<b class="fc">&nbsp;        return AuthenticationResponse.builder().token(jwtToken).build();</b>
+&nbsp;    }
+&nbsp;
+&nbsp;    public void deleteUser(String emailAddress) throws UserNotFoundException, UnauthorizedOperationException {
+<b class="fc">&nbsp;        Optional&lt;UserInfo&gt; user = userRepository.findByEmailAddress(emailAddress);</b>
+&nbsp;
+<b class="fc">&nbsp;        if (!user.isPresent()) {</b>
+<b class="nc">&nbsp;            throw new UserNotFoundException(&quot;User with email address &#39;&quot; + emailAddress + &quot;&#39; not found.&quot;);</b>
+&nbsp;        }
+&nbsp;
+<b class="fc">&nbsp;        UserInfo userToDelete = user.get();</b>
+&nbsp;
+<b class="fc">&nbsp;        if (!isUserAuthorized(userToDelete.getEmailAddress())) {</b>
+<b class="fc">&nbsp;            throw new UnauthorizedOperationException(&quot;You are not authorized to delete this user.&quot;);</b>
+&nbsp;        }
+&nbsp;
+<b class="fc">&nbsp;        userRepository.deleteById(userToDelete.getUserId());</b>
+&nbsp;    }
+&nbsp;
+&nbsp;    public AuthenticationResponse updatePassword(String email,String newPassword) throws InvalidCredentialsException {
+<b class="fc">&nbsp;        Optional&lt;UserInfo&gt; user = userRepository.findByEmailAddress(email);</b>
+&nbsp;
+<b class="fc">&nbsp;        if(!user.isPresent()){</b>
+<b class="nc">&nbsp;            throw new InvalidCredentialsException(&quot;Invalid Credentials.&quot;);</b>
+&nbsp;        }
+&nbsp;
+<b class="fc">&nbsp;        if(newPassword.length() &lt; 8){</b>
+<b class="nc">&nbsp;            throw new IllegalArgumentException(&quot;Password is too short&quot;);</b>
+&nbsp;        }
+&nbsp;
+<b class="fc">&nbsp;        if(isUserAuthorized(email)){</b>
+<b class="fc">&nbsp;            UserInfo validUser = user.get();</b>
+<b class="fc">&nbsp;            validUser.setPasswordDetails(bCryptPasswordEncoder.encode(newPassword));</b>
+<b class="fc">&nbsp;            userRepository.save(validUser);</b>
+<b class="fc">&nbsp;            var jwtToken =jwtService.generateToken(validUser);</b>
+<b class="fc">&nbsp;            return AuthenticationResponse.builder().token(jwtToken).build();</b>
+&nbsp;        }
+&nbsp;
+<b class="nc">&nbsp;        return AuthenticationResponse.builder().token(&quot;Access denied.&quot;).build();</b>
+&nbsp;    }
+&nbsp;
+&nbsp;    public Boolean validateSignUpDetails(@NotNull UserSignupDetails signupDetails) {
+<b class="fc">&nbsp;        EmailValidator validator = EmailValidator.getInstance();</b>
+&nbsp;
+<b class="fc">&nbsp;        String regex = &quot;^[\\p{L}\\p{Nd}&#39;-]+(\\s[\\p{L}\\p{Nd}&#39;-]+)*$&quot;;</b>
+&nbsp;
+<b class="fc">&nbsp;        return signupDetails.getFirstName().matches(regex) &amp;&amp; signupDetails.getLastName().matches(regex)</b>
+<b class="fc">&nbsp;                &amp;&amp; signupDetails.getUserName().matches(regex)</b>
+<b class="fc">&nbsp;                &amp;&amp;validator.isValid(signupDetails.getEmailAddress());</b>
+&nbsp;    }
+&nbsp;
+&nbsp;
+&nbsp;    public UserProfileDto getUserProfileByUsername(String userName) throws UserNotFoundException {
+&nbsp;
+<b class="fc">&nbsp;        if(userName == null || userName.isEmpty()){</b>
+<b class="nc">&nbsp;            throw new IllegalArgumentException(&quot;Invalid user name.&quot;);</b>
+&nbsp;        }
+&nbsp;
+<b class="fc">&nbsp;        UserInfo user = userRepository.findByUserName(userName)</b>
+<b class="fc">&nbsp;                .orElseThrow(() -&gt;new UserNotFoundException(&quot;User not found.&quot;));</b>
+&nbsp;
+<b class="fc">&nbsp;        return userMapper.userProfile(user);</b>
+&nbsp;    }
+&nbsp;
+&nbsp;    public Boolean validateSignInDetails(UserSignInDetailsDto signInDetails) {
+<b class="nc">&nbsp;        String regex = &quot;^[\\p{L}\\p{Nd}&#39;-]+(\\s[\\p{L}\\p{Nd}&#39;-]+)*$&quot;;</b>
+<b class="nc">&nbsp;        return signInDetails.getEmailAddress().matches(regex);</b>
+&nbsp;    }
+&nbsp;
+&nbsp;    @Override
+&nbsp;    public Boolean isValidInput(Object value) {
+<b class="fc">&nbsp;        if(value instanceof UserSignupDetails){</b>
+<b class="fc">&nbsp;            return validateSignUpDetails((UserSignupDetails) value);</b>
+<b class="nc">&nbsp;        }else if(value instanceof UserSignInDetailsDto){</b>
+<b class="nc">&nbsp;            return validateSignInDetails((UserSignInDetailsDto) value);</b>
+&nbsp;        }else{
+<b class="nc">&nbsp;            throw new IllegalArgumentException(&quot;Unsupported input type.&quot;);</b>
+&nbsp;        }
+&nbsp;    }
+&nbsp;    private Boolean isUserAuthorized(String userEmail){
+<b class="fc">&nbsp;        UserInfo validUser = (UserInfo)SecurityContextHolder.getContext().getAuthentication().getPrincipal();</b>
+<b class="fc">&nbsp;        return validUser.getEmailAddress().equals(userEmail);</b>
+&nbsp;    }
+&nbsp;}
+</code>
+</pre>
+</div>
+
+<script type="text/javascript">
+(function() {
+    var msie = false, msie9 = false;
+    /*@cc_on
+      msie = true;
+      @if (@_jscript_version >= 9)
+        msie9 = true;
+      @end
+    @*/
+
+    if (!msie || msie && msie9) {
+      hljs.highlightAll()
+      hljs.initLineNumbersOnLoad();
+    }
+})();
+</script>
+
+<div class="footer">
+    
+    <div style="float:right;">generated on 2024-02-26 22:35</div>
+</div>
+</body>
+</html>

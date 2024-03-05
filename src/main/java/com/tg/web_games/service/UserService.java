@@ -1,99 +1,138 @@
 package com.tg.web_games.service;
 
+import com.tg.web_games.config.JwtService;
 import com.tg.web_games.dto.UserProfileDto;
 import com.tg.web_games.dto.UserSignInDetailsDto;
 import com.tg.web_games.dto.UserSignupDetails;
-import com.tg.web_games.entity.UserDetails;
+import com.tg.web_games.entity.UserInfo;
+import com.tg.web_games.exceptions.DuplicateUserException;
 import com.tg.web_games.exceptions.InvalidCredentialsException;
+import com.tg.web_games.exceptions.UnauthorizedOperationException;
 import com.tg.web_games.exceptions.UserNotFoundException;
 import com.tg.web_games.mapper.SignUpMapper;
 import com.tg.web_games.repository.UserRepository;
 import com.tg.web_games.utils.InputValidator;
+import com.tg.web_games.utils.Roles;
+import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.validator.EmailValidator;
+import org.jetbrains.annotations.NotNull;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
 
 
 @Service
 @RequiredArgsConstructor
-public class UserService implements InputValidator {
+public class UserService{
     private final UserRepository userRepository;
     private final BCryptPasswordEncoder bCryptPasswordEncoder;
     private final SignUpMapper userMapper;
-
-    public String createUser(UserSignupDetails signupDetails){
-        if (!isValidInput(signupDetails)) {
-            return "Bad request";
-        }
-        boolean isUserExist = userRepository.existByEmailAddress(signupDetails.getEmailAddress());
-
-        try{
-            if(!isUserExist){
-                UserDetails newUser = userMapper.signupDetails(signupDetails);
-                newUser.setPasswordDetails(bCryptPasswordEncoder.encode(newUser.getPasswordDetails()));
-
-                userRepository.save(newUser);
-                return "User created";
+    private final JwtService jwtService;
+    private final AuthenticationManager authManager;
+    public UserDetailsService userDetailsService() {
+        return new UserDetailsService() {
+            @Override
+            public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
+                return userRepository.findByEmailAddress(email).orElseThrow(() -> new EntityNotFoundException("Entity not found"));
             }
-            return "User already exist.";
-        }catch (Exception  e){
-            return "Bad Request";
-        }
+        };
     }
 
-    public String signIn(UserSignInDetailsDto signInDetails, String password) throws InvalidCredentialsException {
-        Optional<UserDetails> user = userRepository.findByEmailAddress(signInDetails.getEmailAddress());
+    public AuthenticationResponse createUser(UserSignupDetails signupDetails) throws DuplicateUserException, InvalidCredentialsException {
+        if (!validateSignUpDetails(signupDetails)) {
+            throw new InvalidCredentialsException("Invalid request");
+        }
+        boolean isEmailTaken = userRepository.existsByEmailAddress(signupDetails.getEmailAddress());
 
-        if(!user.isPresent()){
+        if(isEmailTaken){
+            throw new DuplicateUserException("Email address is already taken");
+        }
+
+        UserInfo newUser = userMapper.signupDetails(signupDetails);
+        newUser.setPasswordDetails(bCryptPasswordEncoder.encode(newUser.getPasswordDetails()));
+        newUser.setUserRole(Roles.USER_PLAYER);
+        userRepository.save(newUser);
+        var jwtToken = jwtService.generateToken(newUser);
+        return AuthenticationResponse.builder().token(jwtToken).build();
+    }
+    public AuthenticationResponse signIn(UserSignInDetailsDto signInDetails, String password) throws InvalidCredentialsException, UserNotFoundException {
+        authManager.authenticate(
+                new UsernamePasswordAuthenticationToken(
+                        signInDetails.getEmailAddress(),password
+                )
+        );
+
+        var user = userRepository.findByEmailAddress(signInDetails.getEmailAddress())
+                .orElseThrow(() -> new UserNotFoundException("Invalid user"));
+        var jwtToken =jwtService.generateToken(user);
+
+        if(!bCryptPasswordEncoder.matches(password,user.getPasswordDetails())){
             throw new InvalidCredentialsException("Invalid Credentials.");
         }
-        if(!bCryptPasswordEncoder.matches(password,user.get().getPasswordDetails())){
-            throw new InvalidCredentialsException("Invalid Credentials.");
+
+        return AuthenticationResponse.builder().token(jwtToken).build();
+    }
+
+    public void deleteUser(String emailAddress) throws UserNotFoundException, UnauthorizedOperationException {
+        Optional<UserInfo> user = userRepository.findByEmailAddress(emailAddress);
+
+        if (!user.isPresent()) {
+            throw new UserNotFoundException("User with email address '" + emailAddress + "' not found.");
         }
 
-        return "Logged in";
-    }
+        UserInfo userToDelete = user.get();
 
-    public void deleteUser(String emailAddress){
-        Optional<UserDetails> user =userRepository.findByEmailAddress(emailAddress);
-
-        if(user.isPresent()){
-            UserDetails userToDelete = user.get();
-            userRepository.deleteById(userToDelete.getUserId());
+        if (!isUserAuthorized(userToDelete.getEmailAddress())) {
+            throw new UnauthorizedOperationException("You are not authorized to delete this user.");
         }
 
+        userRepository.deleteById(userToDelete.getUserId());
     }
 
-    public Boolean validateSignUpDetails(UserSignupDetails signupDetails) {
-        EmailValidator validator = EmailValidator.getInstance();
-
-        String regex = "^[\\p{L}\\p{Nd}'-]+(\\s[\\p{L}\\p{Nd}'-]+)*$";
-
-        return signupDetails.getFirstName().matches(regex) && signupDetails.getLastName().matches(regex)
-                && signupDetails.getUserName().matches(regex)
-                &&validator.isValid(signupDetails.getEmailAddress());
-    }
-
-    public String updatePassword(String email,String newPassword) throws InvalidCredentialsException {
-        Optional<UserDetails> user = userRepository.findByEmailAddress(email);
+    public AuthenticationResponse updatePassword(String email,String newPassword) throws InvalidCredentialsException {
+        Optional<UserInfo> user = userRepository.findByEmailAddress(email);
 
         if(!user.isPresent()){
             throw new InvalidCredentialsException("Invalid Credentials.");
         }
 
         if(newPassword.length() < 8){
-            return "too short";
+            throw new IllegalArgumentException("Password is too short.");
         }
 
-        UserDetails validUser = user.get();
-        validUser.setPasswordDetails(bCryptPasswordEncoder.encode(newPassword));
-        userRepository.save(validUser);
+        if(!isUserAuthorized(email)){
 
-        return "Password updated";
+            return AuthenticationResponse.builder().token("Unauthorized request.").build();
+        }
+        UserInfo validUser = user.get();
+        String encodedPw = bCryptPasswordEncoder.encode(newPassword);
+        userRepository.updatePassword(validUser.getUserId(),encodedPw);
+        var jwtToken =jwtService.generateToken(validUser);
+        return AuthenticationResponse.builder().token(jwtToken).build();
     }
+
+    private Boolean validateSignUpDetails(@NotNull UserSignupDetails signupDetails) {
+        EmailValidator validator = EmailValidator.getInstance();
+
+        String nameRegex = "^[a-zA-Z]+(?: [a-zA-Z]+)*$";
+        String userNameRegex = "^[a-zA-Z0-9]+(?: [a-zA-Z0-9]+)*$";
+        String passwordRegex = "^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#\\$%^&*])[a-zA-Z0-9!@#\\$%^&*]{8,}$";
+
+        return signupDetails.getFirstName().matches(nameRegex) && signupDetails.getLastName().matches(nameRegex)
+                && signupDetails.getUserName().matches(userNameRegex)
+                && signupDetails.getPasswordDetails().matches(passwordRegex)
+                &&validator.isValid(signupDetails.getEmailAddress());
+    }
+
 
     public UserProfileDto getUserProfileByUsername(String userName) throws UserNotFoundException {
 
@@ -101,25 +140,19 @@ public class UserService implements InputValidator {
             throw new IllegalArgumentException("Invalid user name.");
         }
 
-        UserDetails user = userRepository.findByUserName(userName)
+        UserInfo user = userRepository.findByUserName(userName)
                 .orElseThrow(() ->new UserNotFoundException("User not found."));
 
         return userMapper.userProfile(user);
     }
 
-    public Boolean validateSignInDetails(UserSignInDetailsDto signInDetails) {
+    private Boolean validateSignInDetails(UserSignInDetailsDto signInDetails) {
         String regex = "^[\\p{L}\\p{Nd}'-]+(\\s[\\p{L}\\p{Nd}'-]+)*$";
         return signInDetails.getEmailAddress().matches(regex);
     }
 
-    @Override
-    public Boolean isValidInput(Object value) {
-        if(value instanceof UserSignupDetails){
-            return validateSignUpDetails((UserSignupDetails) value);
-        }else if(value instanceof UserSignInDetailsDto){
-            return validateSignInDetails((UserSignInDetailsDto) value);
-        }else{
-            throw new IllegalArgumentException("Unsupported input type.");
-        }
+    private Boolean isUserAuthorized(String userEmail){
+        UserInfo validUser = (UserInfo)SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        return validUser.getEmailAddress().equals(userEmail);
     }
 }
